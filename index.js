@@ -25,6 +25,7 @@ const client = new MongoClient(uri, {
 
 const db = client.db("pet-adoption0");
 const allPets = db.collection("all-pets");
+const users = db.collection("users");
 
 app.get("/", (req, res) => {
   res.send("Running Successfully");
@@ -50,6 +51,51 @@ async function run() {
       const result = await allPets.findOne(body);
       res.send(result);
     });
+
+    app.get("/users", async(req, res) => {
+        let query = {}
+        const email = req.query.email
+        const existingUser = await users.findOne({email: email})
+        if(existingUser){
+            query = {
+                email: email
+            }
+        }
+        const result = await users.find(query).toArray()
+        res.send(result)
+    })
+
+    app.post("/users", async(req, res) => {
+        const body = req.body;
+        const query = { email: body.email }
+        const existingUser = await users.findOne(query)
+        if(existingUser){
+          return res.send({ message: "User registered already" })
+        }
+        const result = await users.insertOne(body)
+        res.send(result)
+    })
+
+    app.put("/users/:id", async (req, res) => {
+        const id = req.params.id
+        const user = req.body
+        const filter = { _id: new ObjectId(id) }
+        // const options = { upsert: true }
+  
+        const updatedUser = {
+          $set: {
+            name: user.name,
+           email: user.email, 
+            role: user.role, 
+            image: user.image, 
+          }
+        }
+  
+        const result = await users.updateOne(filter, updatedUser)
+        res.send(result)
+      })
+
+
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
