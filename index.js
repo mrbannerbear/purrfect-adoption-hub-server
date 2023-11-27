@@ -1,7 +1,10 @@
 import express from "express";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
+import stripe from "stripe"
 import dotenv from "dotenv";
+
+const stripeInstance =  stripe(`sk_test_51OExdgCibCkEW5UbRTUs19hjOQxYIP6MSx29lYz3ovUp47qZPuDoUh6hHYyePJDbISBJsOn6rHyAcU5ZisU8T99F00aj1fI4Qi`)
 
 const port = process.env.PORT || 4200;
 
@@ -26,6 +29,7 @@ const client = new MongoClient(uri, {
 const db = client.db("pet-adoption0");
 const allPets = db.collection("all-pets");
 const users = db.collection("users");
+const donations = db.collection("donations");
 
 app.get("/", (req, res) => {
   res.send("Running Successfully");
@@ -52,50 +56,76 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users", async(req, res) => {
-        let query = {}
-        const email = req.query.email
-        const existingUser = await users.findOne({email: email})
-        if(existingUser){
-            query = {
-                email: email
-            }
-        }
-        const result = await users.find(query).toArray()
-        res.send(result)
-    })
+    app.get("/users", async (req, res) => {
+      let query = {};
+      const email = req.query.email;
+      const existingUser = await users.findOne({ email: email });
+      if (existingUser) {
+        query = {
+          email: email,
+        };
+      }
+      const result = await users.find(query).toArray();
+      res.send(result);
+    });
 
-    app.post("/users", async(req, res) => {
-        const body = req.body;
-        const query = { email: body.email }
-        const existingUser = await users.findOne(query)
-        if(existingUser){
-          return res.send({ message: "User registered already" })
-        }
-        const result = await users.insertOne(body)
-        res.send(result)
-    })
+    app.post("/users", async (req, res) => {
+      const body = req.body;
+      const query = { email: body.email };
+      const existingUser = await users.findOne(query);
+      if (existingUser) {
+        return res.send({ message: "User registered already" });
+      }
+      const result = await users.insertOne(body);
+      res.send(result);
+    });
 
     app.put("/users/:id", async (req, res) => {
-        const id = req.params.id
-        const user = req.body
-        const filter = { _id: new ObjectId(id) }
-        // const options = { upsert: true }
+      const id = req.params.id;
+      const user = req.body;
+      const filter = { _id: new ObjectId(id) };
+      // const options = { upsert: true }
+
+      const updatedUser = {
+        $set: {
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          image: user.image,
+        },
+      };
+
+      const result = await users.updateOne(filter, updatedUser);
+      res.send(result);
+    });
+
+    app.get("/donations", async (req, res) => {
+      const result = await donations.find().sort({ addedDate: 1 }).toArray();
+      res.send(result);
+    });
+
+    app.get("/donations/:id", async (req, res) => {
+        const id = req.params.id;
+        const body = { _id: new ObjectId(id) };
+        const result = await donations.findOne(body);
+        res.send(result);
+      });
+
+      // Payment intent
+
+      app.post("/payment-intent", async(req, res) => {
+        const { price } = req.body
+        const amount = parseInt(price*100)
   
-        const updatedUser = {
-          $set: {
-            name: user.name,
-           email: user.email, 
-            role: user.role, 
-            image: user.image, 
-          }
-        }
-  
-        const result = await users.updateOne(filter, updatedUser)
-        res.send(result)
+        const paymentIntent = await stripeInstance.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"]
+        })
+      res.send({
+        client_secret: paymentIntent.client_secret
       })
-
-
+      })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
