@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
-import stripe from "stripe"
+import stripe from "stripe";
 import dotenv from "dotenv";
 
-const stripeInstance =  stripe(`sk_test_51OExdgCibCkEW5UbRTUs19hjOQxYIP6MSx29lYz3ovUp47qZPuDoUh6hHYyePJDbISBJsOn6rHyAcU5ZisU8T99F00aj1fI4Qi`)
+const stripeInstance = stripe(
+  `sk_test_51OExdgCibCkEW5UbRTUs19hjOQxYIP6MSx29lYz3ovUp47qZPuDoUh6hHYyePJDbISBJsOn6rHyAcU5ZisU8T99F00aj1fI4Qi`
+);
 
 const port = process.env.PORT || 4200;
 
@@ -56,6 +58,13 @@ async function run() {
       res.send(result);
     });
 
+    app.delete("/all-pets/:id", async(req, res) => {
+        const id = req.params.id
+        const query = { _id: new ObjectId(id) }
+        const result = await allPets.deleteOne(query)
+        res.send(result)
+    })
+
     app.get("/users", async (req, res) => {
       let query = {};
       const email = req.query.email;
@@ -69,6 +78,13 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/users/:id", async(req, res) => {
+        const id = req.params.id;
+        const body = { _id: new ObjectId(id) };
+        const result = await users.findOne(body);
+        res.send(result);
+    })
+
     app.post("/users", async (req, res) => {
       const body = req.body;
       const query = { email: body.email };
@@ -80,23 +96,19 @@ async function run() {
       res.send(result);
     });
 
-    app.put("/users/:id", async (req, res) => {
-      const id = req.params.id;
-      const user = req.body;
-      const filter = { _id: new ObjectId(id) };
-      // const options = { upsert: true }
+    app.patch("/users/:id", async (req, res) => {
+        const id = req.params.id;
+        const { role } = req.body;
+        const filter = { _id: new ObjectId(id) };
 
-      const updatedUser = {
-        $set: {
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          image: user.image,
-        },
-      };
+        const updatedUser = {
+            $set: {
+                role: role,
+            },
+        };
 
-      const result = await users.updateOne(filter, updatedUser);
-      res.send(result);
+        const result = await users.updateOne(filter, updatedUser);
+        res.send(result);
     });
 
     app.get("/donations", async (req, res) => {
@@ -105,27 +117,75 @@ async function run() {
     });
 
     app.get("/donations/:id", async (req, res) => {
-        const id = req.params.id;
-        const body = { _id: new ObjectId(id) };
-        const result = await donations.findOne(body);
-        res.send(result);
+      const id = req.params.id;
+      const body = { _id: new ObjectId(id) };
+      const result = await donations.findOne(body);
+      res.send(result);
+    });
+
+    app.post("/donations/:id", async (req, res) => {
+      const id = req.params.id;
+      const newDonation = req.body?.userDonations;
+
+      const result = await donations.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $push: { userDonations: newDonation } },
+        { returnDocument: "after" }
+      );
+
+      res.send(result)
+
+    });
+
+    app.patch("/donations/:id", async(req, res) => {
+        const id = req.params.id
+        const body = req.body
+
+        const filter = { _id: new ObjectId(id) }
+        const existingDonation = await donations.findOne(filter);
+
+        const updatedAmount = {
+            $set: {
+                category: body.category || existingDonation.category,
+                name: body.name || existingDonation.name,
+                shortDescription: body.shortDescription || existingDonation.shortDescription,
+                longDescription: body.longDescription || existingDonation.longDescription,
+                image: body.image || existingDonation.image,
+                maxDonation: body.maxDonation || existingDonation.maxDonation,
+                donated: body.donated || existingDonation.donated,
+                lastDate: body.lastDate || existingDonation.lastDate,
+                addedDate: body.addedDate || existingDonation.addedDate,
+                userDonations: body.userDonations || existingDonation.userDonations,
+                donationPaused: body.donationPaused || existingDonation.donationPaused
+            },
+        };
+        const result = await donations.updateOne(filter, updatedAmount)
+        res.send(result)
+    })
+
+
+    app.delete("/donations/:id", async(req, res) => {
+        const id = req.params.id
+        const query = { _id: new ObjectId(id) }
+        const result = await donations.deleteOne(query)
+        res.send(result)
+    })
+
+    // Payment intent
+
+    app.post("/payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
+      const paymentIntent = await stripeInstance.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
       });
-
-      // Payment intent
-
-      app.post("/payment-intent", async(req, res) => {
-        const { price } = req.body
-        const amount = parseInt(price*100)
-  
-        const paymentIntent = await stripeInstance.paymentIntents.create({
-          amount: amount,
-          currency: "usd",
-          payment_method_types: ["card"]
-        })
       res.send({
-        client_secret: paymentIntent.client_secret
-      })
-      })
+        client_secret: paymentIntent.client_secret,
+      });
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
