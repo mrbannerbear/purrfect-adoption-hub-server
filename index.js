@@ -3,6 +3,9 @@ import cors from "cors";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import stripe from "stripe";
 import dotenv from "dotenv";
+import { v2 as cloudinary } from "cloudinary";
+import jwt from "jsonwebtoken";
+import cookieParser from "cookie-parser"
 
 const stripeInstance = stripe(
   `sk_test_51OExdgCibCkEW5UbRTUs19hjOQxYIP6MSx29lYz3ovUp47qZPuDoUh6hHYyePJDbISBJsOn6rHyAcU5ZisU8T99F00aj1fI4Qi`
@@ -13,9 +16,30 @@ const port = process.env.PORT || 4200;
 const app = express();
 
 // Middleware
-app.use(express.json()); // Parses incoming json requests
-app.use(cors()); // Allows server to handle incoming requests
+app.use(express.json({
+    limit: "150mb"
+})); // Parses incoming json requests
+app.use(cors({
+    origin: "http://localhost:5174",
+    credentials: true
+})); // Allows server to handle incoming requests
 dotenv.config(); // Loads .env file contents into process.env by default
+app.use(cookieParser());
+
+const tokenVerify = async (req, res, next) => {
+    const token = req.cookies?.accessToken;
+    console.log(token)
+    if (!token) {
+      return res.status(401).send({ message: "Not Authorized" });
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).send({ message: "Unauthorized" });
+      }
+      req.user = decoded;
+      next();
+    });
+  };
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.v41bc23.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -33,12 +57,68 @@ const allPets = db.collection("all-pets");
 const users = db.collection("users");
 const donations = db.collection("donations");
 
+// Setting up Cloudinary
+
+cloudinary.config({
+  cloud_name: `${process.env.CLOUDINARY_CLOUD}`,
+  api_key: `${process.env.CLOUDINARY_API_KEY}`,
+  api_secret: `${process.env.CLOUDINARY_SECRET}`,
+});
+
 app.get("/", (req, res) => {
   res.send("Running Successfully");
 });
 
 async function run() {
   try {
+
+    // jwt api
+
+    app.post("/jwt", async (req, res) => {
+        const user = req.body;
+        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "5h" });
+        res
+          .cookie("accessToken", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production" ? true : false,
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          })
+          .send({ success: true });
+      });
+  
+      app.post("/logout", async (req, res) => {
+        const body = req.body;
+        res.clearCookie(
+          "accessToken",
+          {
+          maxAge: 0,
+          secure: process.env.NODE_ENV === "production" ? true: false,
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          }
+          ).send({loggedOut: true})
+      });
+
+    // Cloudinary api
+
+    app.post("/cloudinary", (req, res) => {
+    
+        cloudinary.uploader
+            .upload(req.body.image, { public_id: `${req.body.imageName}` , upload_preset: "tx2drc96"})
+            .then((result) => {
+                console.log(result);
+                res.send({
+                    status: "200 OK",
+                });
+            })
+            .catch((err) => {
+                console.error(err);
+                res.status(500).send({
+                    status: "Internal Server Error",
+                });
+            });
+    });
+    
+
     // General apis
 
     app.get("/all-pets", async (req, res) => {
@@ -58,32 +138,35 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/all-pets/:id", async(req, res) => {
-        const id = req.params.id
-        const body = req.body
-        const filter = { _id: new ObjectId(id) }
-        const existingPet = await allPets.findOne(filter)
-        console.log(existingPet?.adopted)
+    app.patch("/all-pets/:id", async (req, res) => {
+      const id = req.params.id;
+      const body = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const existingPet = await allPets.findOne(filter);
+      console.log(existingPet?.adopted);
 
-        const updatedPet = {
-            $set: {
-                name: body.name || existingPet.name,
-                category: body.category || existingPet.category,
-                adopted: body.adopted !== undefined || body.adopted !== null ? body.adopted : existingPet.adopted
-            }
-        }
+      const updatedPet = {
+        $set: {
+          name: body.name || existingPet.name,
+          category: body.category || existingPet.category,
+          adopted:
+            body.adopted !== undefined || body.adopted !== null
+              ? body.adopted
+              : existingPet.adopted,
+        },
+      };
 
-        console.log(updatedPet)
-        const result = await allPets.updateOne(filter, updatedPet)
-        res.send(result)
-    })
+      console.log(updatedPet);
+      const result = await allPets.updateOne(filter, updatedPet);
+      res.send(result);
+    });
 
-    app.delete("/all-pets/:id", async(req, res) => {
-        const id = req.params.id
-        const query = { _id: new ObjectId(id) }
-        const result = await allPets.deleteOne(query)
-        res.send(result)
-    })
+    app.delete("/all-pets/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await allPets.deleteOne(query);
+      res.send(result);
+    });
 
     app.get("/users", async (req, res) => {
       let query = {};
@@ -98,12 +181,12 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/:id", async(req, res) => {
-        const id = req.params.id;
-        const body = { _id: new ObjectId(id) };
-        const result = await users.findOne(body);
-        res.send(result);
-    })
+    app.get("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const body = { _id: new ObjectId(id) };
+      const result = await users.findOne(body);
+      res.send(result);
+    });
 
     app.post("/users", async (req, res) => {
       const body = req.body;
@@ -117,18 +200,18 @@ async function run() {
     });
 
     app.patch("/users/:id", async (req, res) => {
-        const id = req.params.id;
-        const { role } = req.body;
-        const filter = { _id: new ObjectId(id) };
+      const id = req.params.id;
+      const { role } = req.body;
+      const filter = { _id: new ObjectId(id) };
 
-        const updatedUser = {
-            $set: {
-                role: role,
-            },
-        };
+      const updatedUser = {
+        $set: {
+          role: role,
+        },
+      };
 
-        const result = await users.updateOne(filter, updatedUser);
-        res.send(result);
+      const result = await users.updateOne(filter, updatedUser);
+      res.send(result);
     });
 
     app.get("/donations", async (req, res) => {
@@ -143,8 +226,9 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/donations/:id", async (req, res) => {
+    app.post("/donations/:id",tokenVerify, async (req, res) => {
       const id = req.params.id;
+      console.log(req.cookies)
       const newDonation = req.body?.userDonations;
 
       const result = await donations.findOneAndUpdate(
@@ -153,43 +237,46 @@ async function run() {
         { returnDocument: "after" }
       );
 
-      res.send(result)
-
+      res.send(result);
     });
 
-    app.patch("/donations/:id", async(req, res) => {
-        const id = req.params.id
-        const body = req.body
+    app.patch("/donations/:id", async (req, res) => {
+      const id = req.params.id;
+      const body = req.body;
 
-        const filter = { _id: new ObjectId(id) }
-        const existingDonation = await donations.findOne(filter);
+      const filter = { _id: new ObjectId(id) };
+      const existingDonation = await donations.findOne(filter);
 
-        const updatedAmount = {
-            $set: {
-                category: body.category || existingDonation.category,
-                name: body.name || existingDonation.name,
-                shortDescription: body.shortDescription || existingDonation.shortDescription,
-                longDescription: body.longDescription || existingDonation.longDescription,
-                image: body.image || existingDonation.image,
-                maxDonation: body.maxDonation || existingDonation.maxDonation,
-                donated: body.donated || existingDonation.donated,
-                lastDate: body.lastDate || existingDonation.lastDate,
-                addedDate: body.addedDate || existingDonation.addedDate,
-                userDonations: body.userDonations || existingDonation.userDonations,
-                donationPaused: body.donationPaused !== undefined || body.donationPaused !== null ? body.donationPaused : existingDonation.donationPaused
-            },
-        };
-        const result = await donations.updateOne(filter, updatedAmount)
-        res.send(result)
-    })
+      const updatedAmount = {
+        $set: {
+          category: body.category || existingDonation.category,
+          name: body.name || existingDonation.name,
+          shortDescription:
+            body.shortDescription || existingDonation.shortDescription,
+          longDescription:
+            body.longDescription || existingDonation.longDescription,
+          image: body.image || existingDonation.image,
+          maxDonation: body.maxDonation || existingDonation.maxDonation,
+          donated: body.donated || existingDonation.donated,
+          lastDate: body.lastDate || existingDonation.lastDate,
+          addedDate: body.addedDate || existingDonation.addedDate,
+          userDonations: body.userDonations || existingDonation.userDonations,
+          donationPaused:
+            body.donationPaused !== undefined || body.donationPaused !== null
+              ? body.donationPaused
+              : existingDonation.donationPaused,
+        },
+      };
+      const result = await donations.updateOne(filter, updatedAmount);
+      res.send(result);
+    });
 
-
-    app.delete("/donations/:id", async(req, res) => {
-        const id = req.params.id
-        const query = { _id: new ObjectId(id) }
-        const result = await donations.deleteOne(query)
-        res.send(result)
-    })
+    app.delete("/donations/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await donations.deleteOne(query);
+      res.send(result);
+    });
 
     // Payment intent
 
