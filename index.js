@@ -58,6 +58,26 @@ async function run() {
       res.send(result);
     });
 
+    app.patch("/all-pets/:id", async(req, res) => {
+        const id = req.params.id
+        const body = req.body
+        const filter = { _id: new ObjectId(id) }
+        const existingPet = await allPets.findOne(filter)
+        console.log(existingPet?.adopted)
+
+        const updatedPet = {
+            $set: {
+                name: body.name || existingPet.name,
+                category: body.category || existingPet.category,
+                adopted: body.adopted !== undefined || body.adopted !== null ? body.adopted : existingPet.adopted
+            }
+        }
+
+        console.log(updatedPet)
+        const result = await allPets.updateOne(filter, updatedPet)
+        res.send(result)
+    })
+
     app.delete("/all-pets/:id", async(req, res) => {
         const id = req.params.id
         const query = { _id: new ObjectId(id) }
@@ -156,7 +176,7 @@ async function run() {
                 lastDate: body.lastDate || existingDonation.lastDate,
                 addedDate: body.addedDate || existingDonation.addedDate,
                 userDonations: body.userDonations || existingDonation.userDonations,
-                donationPaused: body.donationPaused || existingDonation.donationPaused
+                donationPaused: body.donationPaused !== undefined || body.donationPaused !== null ? body.donationPaused : existingDonation.donationPaused
             },
         };
         const result = await donations.updateOne(filter, updatedAmount)
