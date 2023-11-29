@@ -5,7 +5,7 @@ import stripe from "stripe";
 import dotenv from "dotenv";
 import { v2 as cloudinary } from "cloudinary";
 import jwt from "jsonwebtoken";
-import cookieParser from "cookie-parser"
+import cookieParser from "cookie-parser";
 
 const stripeInstance = stripe(
   `sk_test_51OExdgCibCkEW5UbRTUs19hjOQxYIP6MSx29lYz3ovUp47qZPuDoUh6hHYyePJDbISBJsOn6rHyAcU5ZisU8T99F00aj1fI4Qi`
@@ -16,30 +16,34 @@ const port = process.env.PORT || 4200;
 const app = express();
 
 // Middleware
-app.use(express.json({
-    limit: "150mb"
-})); // Parses incoming json requests
-app.use(cors({
+app.use(
+  express.json({
+    limit: "150mb",
+  })
+); // Parses incoming json requests
+app.use(
+  cors({
     origin: "http://localhost:5174",
-    credentials: true
-})); // Allows server to handle incoming requests
+    credentials: true,
+  })
+); // Allows server to handle incoming requests
 dotenv.config(); // Loads .env file contents into process.env by default
 app.use(cookieParser());
 
 const tokenVerify = async (req, res, next) => {
-    const token = req.cookies?.accessToken;
-    console.log(token)
-    if (!token) {
-      return res.status(401).send({ message: "Not Authorized" });
+  const token = req.cookies?.accessToken;
+  console.log(token);
+  if (!token) {
+    return res.status(401).send({ message: "Not Authorized" });
+  }
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorized" });
     }
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-      if (err) {
-        return res.status(401).send({ message: "Unauthorized" });
-      }
-      req.user = decoded;
-      next();
-    });
-  };
+    req.user = decoded;
+    next();
+  });
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.v41bc23.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -71,53 +75,56 @@ app.get("/", (req, res) => {
 
 async function run() {
   try {
-
     // jwt api
 
     app.post("/jwt", async (req, res) => {
-        const user = req.body;
-        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "5h" });
-        res
-          .cookie("accessToken", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production" ? true : false,
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-          })
-          .send({ success: true });
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "5h",
       });
-  
-      app.post("/logout", async (req, res) => {
-        const body = req.body;
-        res.clearCookie(
-          "accessToken",
-          {
-          maxAge: 0,
-          secure: process.env.NODE_ENV === "production" ? true: false,
+      res
+        .cookie("accessToken", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production" ? true : false,
           sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-          }
-          ).send({loggedOut: true})
-      });
+        })
+        .send({ success: true });
+    });
+
+    app.post("/logout", async (req, res) => {
+      const body = req.body;
+      res
+        .clearCookie("accessToken", {
+          maxAge: 0,
+          secure: process.env.NODE_ENV === "production" ? true : false,
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ loggedOut: true });
+    });
 
     // Cloudinary api
 
     app.post("/cloudinary", (req, res) => {
-    
-        cloudinary.uploader
-            .upload(req.body.image, { public_id: `${req.body.imageName}` , upload_preset: "tx2drc96"})
-            .then((result) => {
-                console.log(result);
-                res.send({
-                    status: "200 OK",
-                });
-            })
-            .catch((err) => {
-                console.error(err);
-                res.status(500).send({
-                    status: "Internal Server Error",
-                });
-            });
+      cloudinary.uploader
+        .upload(req.body.image, {
+          public_id: `${req.body.imageName}`,
+          upload_preset: "tx2drc96",
+        })
+        .then((result) => {
+          // console.log(result);
+          res.send({
+            status: "200 OK",
+            public_id: result.public_id,
+            imgURL: result.url,
+          });
+        })
+        .catch((err) => {
+          // console.error(err);
+          res.status(500).send({
+            status: "Internal Server Error",
+          });
+        });
     });
-    
 
     // General apis
 
@@ -126,7 +133,7 @@ async function run() {
 
       const result = await allPets
         .find(query)
-        .sort({ added_date: -1 })
+        .sort({ added_date: 1 })
         .toArray();
       res.send(result);
     });
@@ -138,25 +145,39 @@ async function run() {
       res.send(result);
     });
 
+    app.post("/all-pets", async (req, res) => {
+      const body = req.body;
+      const result = await allPets.insertOne(body);
+      res.send(result);
+    });
+
     app.patch("/all-pets/:id", async (req, res) => {
       const id = req.params.id;
       const body = req.body;
       const filter = { _id: new ObjectId(id) };
       const existingPet = await allPets.findOne(filter);
-      console.log(existingPet?.adopted);
+      console.log(body)
 
       const updatedPet = {
         $set: {
-          name: body.name || existingPet.name,
-          category: body.category || existingPet.category,
-          adopted:
-            body.adopted !== undefined || body.adopted !== null
-              ? body.adopted
-              : existingPet.adopted,
+              name: body?.name || existingPet.name,
+              category: body?.category || existingPet.category,
+              age: body?.age  || existingPet.age,
+              location: body?.location  || existingPet.location,
+              shortDescription: body?.shortDescription  || existingPet.shortDescription,
+              longDescription: body?.longDescription  || existingPet.longDescription,
+              image: body?.image  || existingPet.image,
+              imageName: body?.imageName  || existingPet.imageName,
+              adopted:
+              body.adopted !== undefined || body.adopted !== null
+                ? body.adopted
+                : existingPet.adopted,
+               added_dateShort: body?.added_dateShort || existingPet.added_dateShort,
+               added_date: body?.added_date || existingPet.added_date,
+               userName: body?.userName || existingPet.userName,
+               userEmail: body?.userEmail || existingPet.email,
         },
       };
-
-      console.log(updatedPet);
       const result = await allPets.updateOne(filter, updatedPet);
       res.send(result);
     });
@@ -226,9 +247,8 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/donations/:id",tokenVerify, async (req, res) => {
+    app.post("/donations/:id", tokenVerify, async (req, res) => {
       const id = req.params.id;
-      console.log(req.cookies)
       const newDonation = req.body?.userDonations;
 
       const result = await donations.findOneAndUpdate(
