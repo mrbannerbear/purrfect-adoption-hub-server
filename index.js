@@ -60,6 +60,7 @@ const db = client.db("pet-adoption0");
 const allPets = db.collection("all-pets");
 const users = db.collection("users");
 const donations = db.collection("donations");
+const adoptionRequests = db.collection("adoption-requests");
 
 // Setting up Cloudinary
 
@@ -133,7 +134,7 @@ async function run() {
 
       const result = await allPets
         .find(query)
-        .sort({ added_date: 1 })
+        .sort({ added_dateShort: -1 })
         .toArray();
       res.send(result);
     });
@@ -156,26 +157,27 @@ async function run() {
       const body = req.body;
       const filter = { _id: new ObjectId(id) };
       const existingPet = await allPets.findOne(filter);
-      console.log(body)
+      console.log(body);
 
       const updatedPet = {
         $set: {
-              name: body?.name || existingPet.name,
-              category: body?.category || existingPet.category,
-              age: body?.age  || existingPet.age,
-              location: body?.location  || existingPet.location,
-              shortDescription: body?.shortDescription  || existingPet.shortDescription,
-              longDescription: body?.longDescription  || existingPet.longDescription,
-              image: body?.image  || existingPet.image,
-              imageName: body?.imageName  || existingPet.imageName,
-              adopted:
-              body.adopted !== undefined || body.adopted !== null
-                ? body.adopted
-                : existingPet.adopted,
-               added_dateShort: body?.added_dateShort || existingPet.added_dateShort,
-               added_date: body?.added_date || existingPet.added_date,
-               userName: body?.userName || existingPet.userName,
-               userEmail: body?.userEmail || existingPet.email,
+          name: body?.name || existingPet.name,
+          category: body?.category || existingPet.category,
+          age: body?.age || existingPet.age,
+          location: body?.location || existingPet.location,
+          shortDescription:
+            body?.shortDescription || existingPet.shortDescription,
+          longDescription: body?.longDescription || existingPet.longDescription,
+          image: body?.image || existingPet.image,
+          imageName: body?.imageName || existingPet.imageName,
+          adopted:
+            body.adopted !== undefined || body.adopted !== null
+              ? body.adopted
+              : existingPet.adopted,
+          added_dateShort: body?.added_dateShort || existingPet.added_dateShort,
+          added_date: body?.added_date || existingPet.added_date,
+          userName: body?.userName || existingPet.userName,
+          userEmail: body?.userEmail || existingPet.email,
         },
       };
       const result = await allPets.updateOne(filter, updatedPet);
@@ -235,8 +237,40 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/adoption-requests", async (req, res) => {
+      const result = await adoptionRequests.find().toArray();
+      res.send(result);
+    });
+
+    app.post("/adoption-requests", async (req, res) => {
+      const body = req.body;
+      console.log(body);
+      const result = await adoptionRequests.insertOne(body);
+      res.send(result);
+    });
+
+    app.get("/adoption-requests/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await adoptionRequests.findOne(filter);
+      res.send(result);
+    });
+
+    app.delete("/adoption-requests/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await adoptionRequests.deleteOne(query);
+      res.send(result);
+    });
+
     app.get("/donations", async (req, res) => {
-      const result = await donations.find().sort({ addedDate: 1 }).toArray();
+      const result = await donations.find().sort({ addedDate: -1 }).toArray();
+      res.send(result);
+    });
+
+    app.post("/donations", async (req, res) => {
+      const body = req.body;
+      const result = await donations.insertOne(body);
       res.send(result);
     });
 
@@ -260,13 +294,39 @@ async function run() {
       res.send(result);
     });
 
+    app.delete("/donations/:id", tokenVerify, async (req, res) => {
+      const id = req.params.id;
+      const donorEmail = req.query?.donorEmail;
+      const donationDate = req.query?.donationDate;
+    //   const donationAmount = req.query?.donationAmount;
+
+      console.log(donorEmail)
+      
+      const result = await donations.updateOne(
+        { 
+          _id: new ObjectId(id),
+        },
+        {
+          $pull: {
+           "userDonations": {
+              donorEmail: donorEmail,
+              donationDate: donationDate,
+            //   donationAmount: donationAmount,
+            },
+          },
+        }
+      )
+      res.send(result)
+    }
+    );
+
     app.patch("/donations/:id", async (req, res) => {
       const id = req.params.id;
       const body = req.body;
 
       const filter = { _id: new ObjectId(id) };
       const existingDonation = await donations.findOne(filter);
-
+      console.log(req.body);
       const updatedAmount = {
         $set: {
           category: body.category || existingDonation.category,
@@ -279,7 +339,7 @@ async function run() {
           maxDonation: body.maxDonation || existingDonation.maxDonation,
           donated: body.donated || existingDonation.donated,
           lastDate: body.lastDate || existingDonation.lastDate,
-          addedDate: body.addedDate || existingDonation.addedDate,
+          //   addedDate: body.addedDate || existingDonation.addedDate,
           userDonations: body.userDonations || existingDonation.userDonations,
           donationPaused:
             body.donationPaused !== undefined || body.donationPaused !== null
