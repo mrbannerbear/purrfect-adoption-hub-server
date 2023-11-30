@@ -23,7 +23,7 @@ app.use(
 ); // Parses incoming json requests
 app.use(
   cors({
-    origin: "http://localhost:5174",
+    origin: ["http://localhost:5174", "https://purrfect-adoption-hub1.surge.sh"],
     credentials: true,
   })
 ); // Allows server to handle incoming requests
@@ -146,13 +146,13 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/all-pets", async (req, res) => {
+    app.post("/all-pets", tokenVerify, async (req, res) => {
       const body = req.body;
       const result = await allPets.insertOne(body);
       res.send(result);
     });
 
-    app.patch("/all-pets/:id", async (req, res) => {
+    app.patch("/all-pets/:id", tokenVerify, async (req, res) => {
       const id = req.params.id;
       const body = req.body;
       const filter = { _id: new ObjectId(id) };
@@ -177,14 +177,14 @@ async function run() {
           added_dateShort: body?.added_dateShort || existingPet.added_dateShort,
           added_date: body?.added_date || existingPet.added_date,
           userName: body?.userName || existingPet.userName,
-          userEmail: body?.userEmail || existingPet.email,
+          userEmail: body?.userEmail || existingPet.userEmail,
         },
       };
       const result = await allPets.updateOne(filter, updatedPet);
       res.send(result);
     });
 
-    app.delete("/all-pets/:id", async (req, res) => {
+    app.delete("/all-pets/:id", tokenVerify, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await allPets.deleteOne(query);
@@ -268,7 +268,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/donations", async (req, res) => {
+    app.post("/donations", tokenVerify, async (req, res) => {
       const body = req.body;
       const result = await donations.insertOne(body);
       res.send(result);
@@ -320,7 +320,7 @@ async function run() {
     }
     );
 
-    app.patch("/donations/:id", async (req, res) => {
+    app.patch("/donations/:id", tokenVerify, async (req, res) => {
       const id = req.params.id;
       const body = req.body;
 
@@ -351,7 +351,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/donations/:id", async (req, res) => {
+    app.delete("/donations/:id", tokenVerify, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await donations.deleteOne(query);
