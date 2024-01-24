@@ -23,7 +23,7 @@ app.use(
 ); // Parses incoming json requests
 app.use(
   cors({
-    origin: ["http://localhost:5174", "https://purrfect-adoption-hub1.surge.sh"],
+    origin: ["http://localhost:5174", "https://purrfect-adoption-hub1.surge.sh", "https://purrfect-client.vercel.app"],
     credentials: true,
   })
 ); // Allows server to handle incoming requests
@@ -152,7 +152,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/all-pets/:id", tokenVerify, async (req, res) => {
+    app.patch("/all-pets/:id", async (req, res) => {
       const id = req.params.id;
       const body = req.body;
       const filter = { _id: new ObjectId(id) };
@@ -184,7 +184,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/all-pets/:id", tokenVerify, async (req, res) => {
+    app.delete("/all-pets/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await allPets.deleteOne(query);
@@ -294,7 +294,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/donations/:id", tokenVerify, async (req, res) => {
+    app.delete("/donations/:id", async (req, res) => {
       const id = req.params.id;
       const donorEmail = req.query?.donorEmail;
       const donationDate = req.query?.donationDate;
@@ -320,7 +320,7 @@ async function run() {
     }
     );
 
-    app.patch("/donations/:id", tokenVerify, async (req, res) => {
+    app.patch("/donations/:id", async (req, res) => {
       const id = req.params.id;
       const body = req.body;
 
@@ -351,7 +351,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/donations/:id", tokenVerify, async (req, res) => {
+    app.delete("/donations/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await donations.deleteOne(query);
