@@ -23,7 +23,7 @@ app.use(
 ); // Parses incoming json requests
 app.use(
   cors({
-    origin: ["http://localhost:5174", "https://purrfect-adoption-hub1.surge.sh", "https://purrfect-client.vercel.app"],
+    origin: ["http://localhost:5174", "https://purrfect-client.vercel.app"],
     credentials: true,
   })
 ); // Allows server to handle incoming requests
